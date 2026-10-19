@@ -11,7 +11,7 @@ Technical assessment submission for the Information Security Analyst role at Sav
 | **Section 1B (1–6)** | SIEM, DAST, SAST, Secrets, SCA, SDLC               | [`docs/02-section1B-siem-dast-sast-secure-ai-sdlc.md`](file:///b:/Projects/SIL-Assessment/docs/02-section1B-siem-dast-sast-secure-ai-sdlc.md) | [`siem/`](file:///b:/Projects/SIL-Assessment/siem), [`ci/`](file:///b:/Projects/SIL-Assessment/ci), [`.github/workflows/`](file:///b:/Projects/SIL-Assessment/.github/workflows) |
 | **Section 2 (a–g)**  | Softskills, Simulated Incident Report, Safe Harbor | [`docs/03-section2-softskills-and-policy.md`](file:///b:/Projects/SIL-Assessment/docs/03-section2-softskills-and-policy.md)                   | One-page PHI-to-ChatGPT report, DPA Sec. 43/63                                                                                                                                      |
 
-## System Architecture
+## System Architecture Diagram
 
 ![Savannah Informatics Secure Architecture](SavannahTechnical-Detailed.drawio.svg)
 
