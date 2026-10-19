@@ -1,0 +1,5 @@
+# What an AI assistant might hallucinate. Used to demonstrate the dependency gate. Do NOT install.
+fastapi==0.115.0
+requests==2.32.3
+fastapi-jwt-auth-pro-ultra==1.2.0
+reqeusts==2.0.0

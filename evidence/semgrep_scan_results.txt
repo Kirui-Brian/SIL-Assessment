@@ -1,0 +1,62 @@
+================================================================================
+SEMGREP SCAN RESULTS: AI-GENERATED LOGIC FLAW DETECTION
+Config: ci/semgrep/ai-logic-flaws.yml
+================================================================================
+
+1. SCAN AGAINST VULNERABLE AI CODE (demo/vulnerable_ai_generated.py):
+Target: 1 file | Rules: 6 python rules
+
+┌─────────────────┐
+│ 6 Code Findings │
+└─────────────────┘
+
+    /src/demo/vulnerable_ai_generated.py
+   ❯❯❱ ci.semgrep.sil-cors-wildcard-with-credentials
+          [BLOCKING]
+          Wildcard CORS origin combined with credentials lets any site act as the logged-in user.
+            7┆ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True)
+
+   ❯❯❱ ci.semgrep.sil-fastapi-route-without-auth-dependency
+          [BLOCKING]
+          FastAPI route has no authentication/authorisation dependency. AI generators routinely produce
+          endpoints that work in a demo but forget Depends(require_roles(...)). /healthz is exempt.
+           10┆ @app.get("/patients/{pid}")                      # no auth dependency at all
+           11┆ def get_patient(pid: str, cur=None):
+           12┆     cur.execute(f"SELECT * FROM patients WHERE id = {pid}")   # SQL injection
+           13┆     return cur.fetchone()
+
+   ❯❯❱ ci.semgrep.sil-sql-built-with-string-formatting
+          [BLOCKING]
+          SQL assembled with f-string, %, .format or +. Use parameterised queries (cursor.execute(sql, params)).
+           12┆ cur.execute(f"SELECT * FROM patients WHERE id = {pid}")   # SQL injection
+
+   ❯❯❱ ci.semgrep.sil-weak-hash-for-secrets
+          [BLOCKING]
+          MD5/SHA1 are not acceptable for passwords or tokens. Use argon2/bcrypt (passwords) or HMAC-SHA256.
+           21┆ return hashlib.md5(p.encode()).hexdigest()    # weak
+
+   ❯❯❱ ci.semgrep.sil-jwt-signature-not-verified
+          [BLOCKING]
+          JWT decoded without signature verification, or with an attacker-controlled algorithm list.
+           25┆ return jwt.decode(tok, options={"verify_signature": False})   # trusts forged tokens
+
+   ❯❯❱ ci.semgrep.sil-tls-verification-disabled
+          [BLOCKING]
+          TLS certificate verification disabled. AI snippets add verify=False to silence errors.
+           29┆ return requests.get(url, verify=False)         # TLS off
+
+Scan Summary: 6 blocking findings found on vulnerable demo file.
+
+--------------------------------------------------------------------------------
+
+2. SCAN AGAINST PRODUCTION SERVICES (services/patients & services/appointments):
+Targets: 4 python files | Rules: 7 rules
+
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 0 (0 blocking)
+ • Rules run: 7
+ • Targets scanned: 4
+Ran 7 rules on 4 files: 0 findings.

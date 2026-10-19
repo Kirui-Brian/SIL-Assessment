@@ -1,0 +1,44 @@
+_format_version: "3.0"
+
+services:
+  - name: patients-api
+    url: http://patients:8000
+    routes:
+      - name: patients-route
+        paths: [/patients]
+        strip_path: false
+        methods: [GET, POST]
+    plugins:
+      - name: rate-limiting
+        config: { minute: 30, policy: local, limit_by: ip, error_code: 429 }
+
+  - name: appointments-api
+    url: http://appointments:8000
+    routes:
+      - name: appointments-route
+        paths: [/appointments]
+        strip_path: false
+        methods: [GET, POST]
+    plugins:
+      - name: rate-limiting
+        config: { minute: 60, policy: local, limit_by: ip, error_code: 429 }
+
+plugins:
+  - name: correlation-id
+    config: { header_name: X-Request-ID, generator: uuid, echo_downstream: true }
+  - name: request-size-limiting
+    config: { allowed_payload_size: 128, size_unit: kilobytes }
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "Cache-Control: no-store"
+          - "X-Content-Type-Options: nosniff"
+          - "Strict-Transport-Security: max-age=31536000; includeSubDomains"
+      remove:
+        headers: [Server, X-Powered-By]
+  - name: file-log
+    config: { path: /dev/stdout, reopen: false }
+# Production gateway-level JWT verification (Kong OSS jwt plugin, RS256) is described in docs/01.
+# In this demo each service also validates the Keycloak JWT via JWKS, so a request that bypasses
+# the gateway still cannot reach data without a valid token.

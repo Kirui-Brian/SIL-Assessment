@@ -1,0 +1,19 @@
+<!-- ===== ONBOARDING A NEW LOG SOURCE: Squid egress proxy =====
+     Add to /var/ossec/etc/ossec.conf on the agent running on the proxy host (inside <ossec_config>). -->
+<localfile>
+  <log_format>syslog</log_format>
+  <location>/var/log/squid/access.log</location>
+</localfile>
+
+<!-- Guardrail proxy JSON audit log (written by the llm-guard container; shipped to a host file by the Docker logging driver) -->
+<localfile>
+  <log_format>json</log_format>
+  <location>/var/log/sil/llm-guard.json</location>
+</localfile>
+
+<!-- ===== Ransomware telemetry on file servers: real-time FIM on shares ===== -->
+<syscheck>
+  <directories realtime="yes" check_all="yes" report_changes="no">/srv/shares,/home</directories>
+  <ignore type="sregex">\.(swp|tmp|log)$</ignore>
+  <frequency>43200</frequency>
+</syscheck>

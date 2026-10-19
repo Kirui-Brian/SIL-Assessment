@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: dependency-gate
+        name: dependency hallucination check
+        entry: python3 ci/scripts/check_dependencies.py
+        language: system
+        files: (requirements.*\.txt|package\.json)$
+        exclude: ^demo/

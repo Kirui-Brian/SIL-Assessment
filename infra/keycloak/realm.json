@@ -1,0 +1,34 @@
+{
+  "realm": "savannah",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": { "realm": [ { "name": "clinician" }, { "name": "receptionist" } ] },
+  "clients": [
+    {
+      "clientId": "sil-api",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "demo-secret-change-me",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "alice", "enabled": true, "emailVerified": true,
+      "firstName": "Alice", "lastName": "Clinician", "email": "alice@example.test",
+      "credentials": [ { "type": "password", "value": "alice-pass", "temporary": false } ],
+      "realmRoles": [ "clinician" ]
+    },
+    {
+      "username": "bob", "enabled": true, "emailVerified": true,
+      "firstName": "Bob", "lastName": "Reception", "email": "bob@example.test",
+      "credentials": [ { "type": "password", "value": "bob-pass", "temporary": false } ],
+      "realmRoles": [ "receptionist" ]
+    }
+  ]
+}

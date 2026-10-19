@@ -1,0 +1,116 @@
+# Secure API + AI egress reference stack (demo).
+# Run: cd infra && cp .env.example .env && docker compose up -d --build
+name: sil-secure-stack
+
+networks:
+  edge:            # reachable from the host (WAF, Keycloak for demo token issuance)
+  app:             # internal: no route to the internet
+    internal: true
+    ipam:
+      config: [{ subnet: 172.28.0.0/24 }]
+  egress:          # only the guardrail proxy and the (mock) LLM live here
+
+volumes:
+  pgdata:
+
+services:
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    environment:
+      BACKEND: http://kong:8000
+      PORT: "8080"
+      PARANOIA: "2"
+      ANOMALY_INBOUND: "5"
+      ANOMALY_OUTBOUND: "4"
+      MODSEC_RULE_ENGINE: "On"
+      MODSEC_AUDIT_LOG_FORMAT: JSON
+      MODSEC_AUDIT_LOG: /dev/stdout
+    ports: ["8081:8080"]
+    networks: [edge, app]
+    depends_on: [kong]
+
+  kong:
+    image: kong:3.7
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_TRUSTED_IPS: 172.28.0.0/24
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    volumes: ["./kong/kong.yml:/kong/kong.yml:ro"]
+    networks: [app]
+    depends_on: [patients, appointments]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-change-me-admin}
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+    volumes: ["./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"]
+    ports: ["8080:8080"]
+    networks: [edge, app]
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD:-change-me-super}
+      PATIENTS_DB_PASSWORD: ${PATIENTS_DB_PASSWORD:-change-me-patients}
+      APPOINTMENTS_DB_PASSWORD: ${APPOINTMENTS_DB_PASSWORD:-change-me-appts}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql.tpl:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+    networks: [app]
+
+  patients:
+    build: ../services/patients
+    environment: &oidc
+      OIDC_ISSUER: http://localhost:8080/realms/savannah
+      OIDC_JWKS_URL: http://keycloak:8080/realms/savannah/protocol/openid-connect/certs
+      OIDC_AUDIENCE: account
+      DB_DSN: postgresql://patients_svc:${PATIENTS_DB_PASSWORD:-change-me-patients}@db:5432/clinic
+    depends_on: { db: { condition: service_healthy } }
+    networks: [app]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  appointments:
+    build: ../services/appointments
+    environment:
+      <<: *oidc
+      DB_DSN: postgresql://appointments_svc:${APPOINTMENTS_DB_PASSWORD:-change-me-appts}@db:5432/clinic
+    depends_on: { db: { condition: service_healthy } }
+    networks: [app]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  llm-guard:
+    build: ../guardrails
+    environment:
+      PROXY_API_KEYS: ${LLM_PROXY_KEYS:-team-dev-key-1}
+      UPSTREAM_URL: http://mock-llm:9000/v1/chat/completions
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-provider-key-lives-only-here}
+      ALLOWED_MODELS: gpt-enterprise,claude-enterprise
+      OUTPUT_LINK_ALLOWLIST: savannahinformatics.com
+    ports: ["127.0.0.1:8090:8090"]
+    networks: [app, egress]
+    read_only: true
+    cap_drop: [ALL]
+
+  mock-llm:
+    build: ../guardrails
+    command: ["uvicorn", "mock_llm:app", "--host", "0.0.0.0", "--port", "9000"]
+    networks: [egress]

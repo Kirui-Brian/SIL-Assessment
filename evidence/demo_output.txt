@@ -1,0 +1,60 @@
+== SAVANNAH INFORMATICS TECHNICAL ASSESSMENT: VERIFIED LIVE TEST RUN ==
+Timestamp: Mon Oct 19 2026 13:45:54 EAT
+Host: Windows 11 (PowerShell 7.5.0 / Docker Desktop 29.4.1)
+
+Fetching Keycloak JWT tokens...
+
+== Authentication and Authorisation ==
+no token -> GET /patients/1                                  expected 401  got 401
+forged token -> GET /patients/1                              expected 401  got 401
+clinician -> GET /patients/1                                 expected 200  got 200
+receptionist -> GET /patients (clinician only)               expected 403  got 403
+
+Receptionist view of patient 1 (masked PHI):
+{"id":1,"full_name":"Amina Wanjiru (synthetic)","national_id":"****678","phone":"+254700000001"}
+
+== WAF Blocks (ModSecurity + OWASP CRS) ==
+SQLi in query string                                         expected 403  got 403
+XSS in query string                                          expected 403  got 403
+Path traversal                                               expected 400  got 400
+Scanner user-agent (sqlmap)                                  expected 403  got 403
+
+== Input Validation ==
+POST invalid national_id                                     expected 422  got 422
+Oversized body (200 KB, blocked at edge)                     expected 400  got 400
+
+== Rate Limiting (30/min on /patients) ==
+Request 35 returned 429 (expected 429)
+
+== AI Guardrail Proxy ==
+-- PHI in prompt (should be blocked with 400):
+HTTP 400: {"detail":"Request blocked: sensitive data detected (KE_NATIONAL_ID)"}
+
+-- DB string in prompt (should be blocked with 400):
+HTTP 400: {"detail":"Request blocked: sensitive data detected (DB_CONN_STRING)"}
+
+-- Prompt injection (should be blocked with 400):
+HTTP 400: {"detail":"Request blocked: prompt injection detected (score 1.00)"}
+
+-- Clean prompt, dirty response (PII stripped, link removed, tool call dropped):
+{
+    "id":  "mock-1",
+    "object":  "chat.completion",
+    "model":  "gpt-enterprise",
+    "choices":  [
+                    {
+                        "index":  0,
+                        "finish_reason":  "stop",
+                        "message":  {
+                                        "role":  "assistant",
+                                        "content":  "Sure. Follow up with the patient on [REDACTED:KE_PHONE] or [REDACTED:EMAIL]. Their card [REDACTED:CARD_NUMBER]is on file. [link removed by policy] See https://savannahinformatics.com/policy for details. You asked: 35 chars.",
+                                        "tool_calls":  []
+                                    }
+                    }
+                ],
+    "guardrail":  {
+                      "request_id":  "b1718df1-9132-4499-920e-8a80cc457a10",
+                      "redactions":  3,
+                      "links_removed":  1
+                  }
+}

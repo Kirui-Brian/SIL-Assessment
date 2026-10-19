@@ -1,0 +1,24 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0
+rootdir: B:\Projects\SIL-Assessment
+plugins: anyio-4.15.1
+collected 16 items
+
+guardrails/tests/test_guardrails.py::test_detects_sensitive[Summarise: patient: Amina Wanjiru, national id 12345678-KE_NATIONAL_ID] PASSED [  6%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[call +254712345678-KE_PHONE] PASSED [ 12%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[MRN: AB-77231 needs follow up-MRN] PASSED [ 18%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[conn = postgresql://svc:S3cretPass@db.internal:5432/clinic-DB_CONN_STRING] PASSED [ 25%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[key AKIAABCDEFGHIJKLMNOP-AWS_ACCESS_KEY] PASSED [ 31%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[card 4111 1111 1111 1111-CARD_NUMBER] PASSED [ 37%]
+guardrails/tests/test_guardrails.py::test_detects_sensitive[DOB: 14/03/1988-DOB] PASSED [ 43%]
+guardrails/tests/test_guardrails.py::test_clean_text_has_no_findings PASSED [ 50%]
+guardrails/tests/test_guardrails.py::test_injection_detected PASSED      [ 56%]
+guardrails/tests/test_guardrails.py::test_proxy_requires_key PASSED      [ 62%]
+guardrails/tests/test_guardrails.py::test_proxy_blocks_phi_and_never_echoes_it PASSED [ 68%]
+guardrails/tests/test_guardrails.py::test_proxy_blocks_secret_in_prompt PASSED [ 75%]
+guardrails/tests/test_guardrails.py::test_proxy_blocks_injection PASSED  [ 81%]
+guardrails/tests/test_guardrails.py::test_model_allowlist_and_streaming PASSED [ 87%]
+guardrails/tests/test_guardrails.py::test_output_is_cleaned PASSED       [ 93%]
+guardrails/tests/test_guardrails.py::test_redact_and_links_units PASSED  [100%]
+
+======================== 16 passed, 1 warning in 2.76s ========================

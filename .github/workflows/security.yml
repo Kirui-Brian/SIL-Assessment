@@ -1,0 +1,102 @@
+name: security-pipeline
+on:
+  pull_request:
+  push: { branches: [main] }
+  schedule: [{ cron: "0 22 * * *" }]     # nightly: deeper DAST + full dependency audit
+permissions: { contents: read, security-events: write }
+
+# Pin third-party actions to commit SHAs in production; tags are used here for readability.
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2        # server-side backstop for the pre-commit hook
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install semgrep
+      - name: Semgrep (community + AI logic-flaw rules)
+        run: |
+          semgrep --metrics=off --error --sarif -o semgrep.sarif \
+            --config p/python --config p/owasp-top-ten --config ci/semgrep/ai-logic-flaws.yml \
+            services guardrails
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: semgrep.sarif }
+
+  sca:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Hallucinated / brand-new / typosquatted dependency gate
+        run: python ci/scripts/check_dependencies.py services/*/requirements.txt guardrails/requirements.txt --min-age 30
+      - name: Known vulnerabilities
+        run: |
+          pip install pip-audit
+          for f in services/*/requirements.txt guardrails/requirements.txt; do pip-audit -r "$f" --strict; done
+      - name: SBOM
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py requirements services/patients/requirements.txt -o sbom-patients.json
+      - uses: actions/upload-artifact@v4
+        with: { name: sbom, path: "sbom-*.json" }
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t patients:ci services/patients && docker build -t guard:ci guardrails
+      - uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: patients:ci, severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true }
+      - uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: guard:ci, severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true }
+
+  guardrail-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r guardrails/requirements.txt pytest && pytest -q guardrails/tests
+
+  dast:
+    needs: [sast, sca]                  # do not spend runner minutes attacking code that already failed static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ephemeral environment with synthetic data only
+        working-directory: infra
+        run: |
+          cp .env.example .env
+          docker compose up -d --build --wait db keycloak patients appointments kong waf
+          for i in $(seq 1 40); do curl -sf localhost:8080/realms/savannah >/dev/null && break; sleep 3; done
+      - name: Get a clinician token (authenticated scanning finds the bugs unauthenticated scans cannot)
+        run: |
+          TOKEN=$(curl -s -d client_id=sil-api -d client_secret=demo-secret-change-me -d grant_type=password \
+            -d username=alice -d password=alice-pass localhost:8080/realms/savannah/protocol/openid-connect/token | jq -r .access_token)
+          echo "::add-mask::$TOKEN"; echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - name: ZAP API scan, passive on PRs, time-boxed active at night
+        run: |
+          MODE="-S"                                   # -S = safe/passive checks only
+          [ "${{ github.event_name }}" = "schedule" ] && MODE="-m 10"   # nightly: capped at 10 minutes
+          for API in patients appointments; do
+            docker run --rm --network host -v "$PWD:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+              zap-api-scan.py -t http://localhost:8081/$API/openapi.json -f openapi $MODE \
+              -c ci/zap/api-scan-rules.tsv -r zap-$API.html -J zap-$API.json \
+              -z "-config replacer.full_list(0).description=auth -config replacer.full_list(0).enabled=true \
+                  -config replacer.full_list(0).matchtype=REQ_HEADER -config replacer.full_list(0).matchstring=Authorization \
+                  -config replacer.full_list(0).replacement='Bearer $TOKEN'" || true
+          done
+      - name: Gate on High findings only (Medium and below become tickets, not blockers)
+        run: |
+          HIGH=$(cat zap-*.json | jq -s '[.[].site[].alerts[] | select(.riskcode=="3")] | length' | awk '{s+=$1} END{print s+0}')
+          echo "High-risk alerts: $HIGH"; [ "$HIGH" -eq 0 ]
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: zap-report, path: "zap-*.*" }

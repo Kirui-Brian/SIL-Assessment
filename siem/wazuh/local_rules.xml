@@ -1,0 +1,108 @@
+<!-- Place in /var/ossec/etc/rules/local_rules.xml on the Wazuh manager, then: systemctl restart wazuh-manager -->
+<group name="sil,ransomware,">
+
+  <!-- 1. Mass file modification on one agent (needs syscheck realtime on the monitored paths; see ossec_agent_snippet.xml) -->
+  <rule id="100100" level="12" frequency="60" timeframe="30">
+    <if_matched_sid>550</if_matched_sid>
+    <same_agent />
+    <description>Possible ransomware: 60+ files modified on one host within 30 seconds</description>
+    <mitre><id>T1486</id></mitre>
+    <group>ransomware,</group>
+  </rule>
+
+  <!-- 2. Known ransomware / encrypted file extensions appearing -->
+  <rule id="100101" level="12">
+    <if_sid>554</if_sid>
+    <field name="file" type="pcre2">(?i)\.(locked|lockbit|encrypted|crypt|enc|ryk|akira|blackcat|hive|wncry)$</field>
+    <description>Possible ransomware: file created with encrypted-file extension ($(file))</description>
+    <mitre><id>T1486</id></mitre>
+  </rule>
+
+  <!-- 3. Ransom note dropped -->
+  <rule id="100102" level="12">
+    <if_sid>554</if_sid>
+    <field name="file" type="pcre2">(?i)(readme[-_ ]?to[-_ ]?decrypt|how[-_ ]?to[-_ ]?(restore|recover)|decrypt[-_ ]?instructions|restore[-_ ]?my[-_ ]?files)\.(txt|html|hta)$</field>
+    <description>Possible ransomware: ransom note created ($(file))</description>
+    <mitre><id>T1486</id></mitre>
+  </rule>
+
+  <!-- 4. Shadow copy / backup destruction via Sysmon process creation (Event ID 1) -->
+  <rule id="100103" level="14">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(vssadmin(\.exe)?\s+delete\s+shadows|wmic\s+shadowcopy\s+delete|bcdedit.*recoveryenabled\s+no|wbadmin\s+delete\s+(catalog|backup)|Get-WmiObject\s+Win32_Shadowcopy.*Delete)</field>
+    <description>Backup/shadow copy destruction attempt: $(win.eventdata.commandLine)</description>
+    <mitre><id>T1490</id></mitre>
+  </rule>
+
+  <!-- 5. Linux/ESXi equivalent via auditd EXECVE -->
+  <rule id="100104" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve.a0" type="pcre2">^(vim-cmd|esxcli)$</field>
+    <match>vmsvc/power.off|vm process kill</match>
+    <description>Hypervisor VM power-off/kill from shell (ransomware pre-encryption step)</description>
+    <mitre><id>T1489</id></mitre>
+  </rule>
+</group>
+
+<group name="sil,shadow_ai,">
+
+  <!-- Base: any line decoded by the squid-sil decoder (see local_decoder.xml) -->
+  <rule id="100200" level="3">
+    <decoded_as>squid-sil</decoded_as>
+    <description>Egress proxy access log (sil)</description>
+  </rule>
+
+  <!-- 6. Consumer LLM services reached from the corporate network -->
+  <rule id="100201" level="8">
+    <if_sid>100200</if_sid>
+    <field name="url" type="pcre2">(?i)(chat\.openai\.com|chatgpt\.com|claude\.ai|gemini\.google\.com|bard\.google\.com|copilot\.microsoft\.com|perplexity\.ai|poe\.com|character\.ai|chat\.deepseek\.com|grok\.com|you\.com|huggingface\.co/chat)</field>
+    <description>Shadow AI: $(srcip) accessed consumer LLM $(url)</description>
+    <group>shadow_ai,gdpr_IV_32.2,</group>
+  </rule>
+
+  <!-- 7. Repeated use: same source, 15+ hits in 10 minutes -->
+  <rule id="100202" level="10" frequency="15" timeframe="600">
+    <if_matched_sid>100201</if_matched_sid>
+    <same_source_ip />
+    <description>Shadow AI: sustained consumer LLM use from $(srcip) (15+ requests / 10 min)</description>
+  </rule>
+
+  <!-- 8. Large transfer to a consumer LLM (possible bulk paste/upload); squid bytes are response-side, so tune per site -->
+  <rule id="100203" level="12">
+    <if_sid>100201</if_sid>
+    <field name="bytes" type="pcre2">^\d{7,}$</field>
+    <description>Shadow AI: large transfer (>= 1 MB) with consumer LLM from $(srcip). Check for data upload</description>
+  </rule>
+
+  <!-- 9. Direct calls to LLM provider APIs that bypassed the guardrail proxy -->
+  <rule id="100204" level="10">
+    <if_sid>100200</if_sid>
+    <field name="url" type="pcre2">(?i)(api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.cohere\.(com|ai))</field>
+    <field name="srcip" negate="yes" type="pcre2">^172\.28\.0\.\d+$</field>
+    <description>LLM API call from $(srcip) that did not come from the guardrail proxy</description>
+    <group>shadow_ai,</group>
+  </rule>
+
+  <!-- 10. Guardrail proxy audit log (JSON). Spike in blocks = someone probing or leaking -->
+  <rule id="100210" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="svc">^llm_guard$</field>
+    <description>LLM guardrail proxy event</description>
+  </rule>
+  <rule id="100211" level="9">
+    <if_sid>100210</if_sid>
+    <field name="reason">^sensitive_data_in_prompt$</field>
+    <description>Guardrail blocked sensitive data in an LLM prompt (caller $(caller): $(categories))</description>
+    <group>shadow_ai,phi_exposure_attempt,</group>
+  </rule>
+  <rule id="100212" level="11" frequency="5" timeframe="300">
+    <if_matched_sid>100211</if_matched_sid>
+    <same_field>caller</same_field>
+    <description>Repeated sensitive-data blocks from one LLM caller: coach or investigate</description>
+  </rule>
+  <rule id="100213" level="10">
+    <if_sid>100210</if_sid>
+    <field name="reason">^prompt_injection_suspected$</field>
+    <description>Guardrail blocked suspected prompt injection (caller $(caller))</description>
+  </rule>
+</group>

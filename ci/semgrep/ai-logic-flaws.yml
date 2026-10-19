@@ -1,0 +1,73 @@
+rules:
+  - id: sil-fastapi-route-without-auth-dependency
+    languages: [python]
+    severity: ERROR
+    message: >
+      FastAPI route has no authentication/authorisation dependency. AI generators routinely produce
+      endpoints that work in a demo but forget Depends(require_roles(...)). /healthz is exempt.
+    patterns:
+      - pattern: |
+          @$APP.$METHOD($PATH, ...)
+          def $FUNC(...):
+              ...
+      - pattern-not: |
+          @$APP.$METHOD($PATH, ...)
+          def $FUNC(..., $P: $T = Depends(...), ...):
+              ...
+      - pattern-not: |
+          @$APP.$METHOD("/healthz", ...)
+          def $FUNC(...):
+              ...
+      - metavariable-regex: { metavariable: $METHOD, regex: "^(get|post|put|patch|delete)$" }
+
+  - id: sil-sql-built-with-string-formatting
+    languages: [python]
+    severity: ERROR
+    message: SQL assembled with f-string, %, .format or +. Use parameterised queries (cursor.execute(sql, params)).
+    pattern-either:
+      - pattern: $CUR.execute(f"...{...}...")
+      - pattern: $CUR.execute("..." % ...)
+      - pattern: $CUR.execute("...".format(...))
+      - pattern: $CUR.execute("..." + $X)
+
+  - id: sil-jwt-signature-not-verified
+    languages: [python]
+    severity: ERROR
+    message: JWT decoded without signature verification, or with an attacker-controlled algorithm list.
+    pattern-either:
+      - pattern: 'jwt.decode(..., options={"verify_signature": False}, ...)'
+      - pattern: jwt.decode(..., verify=False, ...)
+      - pattern: jwt.decode(..., algorithms=["none", ...], ...)
+
+  - id: sil-weak-hash-for-secrets
+    languages: [python]
+    severity: WARNING
+    message: MD5/SHA1 are not acceptable for passwords or tokens. Use argon2/bcrypt (passwords) or HMAC-SHA256.
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+
+  - id: sil-predictable-token-generation
+    languages: [python]
+    severity: ERROR
+    message: random module is not cryptographically secure. Use the secrets module for tokens, OTPs and reset codes.
+    pattern-either:
+      - pattern: random.randint(...)
+      - pattern: random.choice(...)
+      - pattern: random.random()
+    paths: { include: ["**/auth*", "**/token*", "**/reset*", "**/otp*"] }
+
+  - id: sil-tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate verification disabled. AI snippets add verify=False to silence errors.
+    pattern-either:
+      - pattern: requests.$M(..., verify=False, ...)
+      - pattern: httpx.$M(..., verify=False, ...)
+
+  - id: sil-cors-wildcard-with-credentials
+    languages: [python]
+    severity: ERROR
+    message: Wildcard CORS origin combined with credentials lets any site act as the logged-in user.
+    pattern: |
+      $APP.add_middleware(CORSMiddleware, ..., allow_origins=["*"], ..., allow_credentials=True, ...)

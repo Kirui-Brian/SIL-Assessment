@@ -1,0 +1,11 @@
+<!-- /var/ossec/etc/decoders/local_decoder.xml
+     Native Squid access.log, e.g.:
+     1760870400.123    245 10.0.4.23 TCP_TUNNEL/200 5120 CONNECT chat.openai.com:443 - HIER_DIRECT/104.18.32.47 -  -->
+<decoder name="squid-sil">
+  <prematch type="pcre2">^\d{10}\.\d{3}\s+\d+\s+\S+\s+[A-Z_]+/\d{3}\s+\d+\s+[A-Z]+\s+\S+</prematch>
+</decoder>
+<decoder name="squid-sil-fields">
+  <parent>squid-sil</parent>
+  <regex type="pcre2">^\d{10}\.\d{3}\s+(\d+)\s+(\S+)\s+([A-Z_]+)/(\d{3})\s+(\d+)\s+([A-Z]+)\s+(\S+)</regex>
+  <order>duration,srcip,action,status,bytes,method,url</order>
+</decoder>
