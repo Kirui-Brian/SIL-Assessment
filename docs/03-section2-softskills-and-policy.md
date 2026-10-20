@@ -20,7 +20,7 @@ Mechanically, I take a two-minute pass over the queue before touching any single
 
 ## c. One-page incident report (simulated)
 
-> **SIMULATED EXERCISE.** Scenario: a developer pasted patient data into a public ChatGPT prompt. All names, IDs and numbers are fictitious.
+> **SIMULATED EXERCISE.** Scenario: a developer pasted patient data into a public ChatGPT prompt.
 
 **INCIDENT REPORT IR-2026-017: PHI submitted to a public generative AI service**
 
