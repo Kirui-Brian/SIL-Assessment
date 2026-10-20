@@ -5,6 +5,8 @@ rules:
     message: >
       FastAPI route has no authentication/authorisation dependency. AI generators routinely produce
       endpoints that work in a demo but forget Depends(require_roles(...)). /healthz is exempt.
+    paths:
+      exclude: ["**/mock_*.py", "**/tests/**", "**/demo/**"]
     patterns:
       - pattern: |
           @$APP.$METHOD($PATH, ...)

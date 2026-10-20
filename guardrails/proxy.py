@@ -6,7 +6,7 @@ Logs:     JSON audit lines with categories and counts only, never prompt or resp
 """
 import hashlib, hmac, json, logging, os, sys, time, uuid
 import httpx
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from detectors import injection_score, redact, scan_data, strip_untrusted_links
 
@@ -52,18 +52,21 @@ def _blocked(rid: str, who: str, reason: str, categories: list[str], status: int
                         "categories": sorted(set(categories)), "request_id": rid}})
 
 
+def require_api_key(authorization: str | None = Header(default=None)) -> str:
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not any(hmac.compare_digest(token, k) for k in API_KEYS):
+        raise HTTPException(401, "invalid api key")
+    return hashlib.sha256(token.encode()).hexdigest()[:8]           # pseudonymous caller id for logs
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
 
 
 @app.post("/v1/chat/completions")
-async def chat(payload: dict, authorization: str | None = Header(default=None)):
+async def chat(payload: dict, caller: str = Depends(require_api_key)):
     rid = str(uuid.uuid4())
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    if not any(hmac.compare_digest(token, k) for k in API_KEYS):
-        raise HTTPException(401, "invalid api key")
-    caller = hashlib.sha256(token.encode()).hexdigest()[:8]           # pseudonymous caller id for logs
 
     if payload.get("model") not in ALLOWED_MODELS:
         return _blocked(rid, caller, "model_not_allowed", [])
